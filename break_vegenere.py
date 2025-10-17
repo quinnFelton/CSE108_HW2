@@ -12,7 +12,7 @@ EN_FREQ = {
     'z': .00074, ' ': .13000
 }
 
-K = 100 #max size of Key
+K = 1000 #max size of Key
 def find_distribution(data: bytes):
     """Return a frequency distribution (Counter) of bytes in data."""
     count = Counter(data)
@@ -27,7 +27,7 @@ def find_distribution(data: bytes):
 
     english_count = {c: f / total for c, f in count.items()}
 
-    print("Distribution:", english_count)
+    #print("Distribution:", english_count)
     return english_count
 
 
@@ -36,7 +36,7 @@ def sum_multi_distribution(d1: dict, d2: dict) -> float:
     total = 0.0
     for symbol, freq in d1.items():
         total += freq * d2.get(symbol, 0.0)
-    print("sum_multi_distribution:", total)
+    #print("sum_multi_distribution:", total)
     return total
 
 def create_substring(data: bytes, keysize: int, start: int) -> bytes:
@@ -55,7 +55,7 @@ def find_key_size_helper(ciphertext: bytes, keysize: int, start: int) -> int:
     dist_sum = sum_multi_distribution(distribution, distribution)
     return dist_sum
 
-def find_key_size(ciphertext: bytes) -> int:
+def find_key_size(ciphertext: bytes) -> dict:
     top5 = {}
     for keysize in range(1, K + 1):
         dist_sum = find_key_size_helper(ciphertext, keysize, 0)
@@ -64,30 +64,83 @@ def find_key_size(ciphertext: bytes) -> int:
     for i, (k, _) in enumerate(top5.items()):
         dist_sum = find_key_size_helper(ciphertext, k, i)
         top5[k] = top5[k] + dist_sum
-    top5 = dict(sorted(top5.items(), key=lambda x: x[1], reverse=True)[:5])
-    print("Best key sizes (higher is better):", top5)
+    top5 = dict(sorted(top5.items(), key=lambda x: x[1], reverse=True))
+    print("Best key sizes:", top5)
     return top5
+
+def score_english(text: bytes) -> float:
+    # simple scoring: favor English letter frequency and printable chars
+    # score = 0.0
+    # for b in text:
+    #     if b >= 0x80:
+    #         score -= 5
+    #         continue
+    #     c = chr(b).lower()
+    #     if c in EN_FREQ:
+    #         score += EN_FREQ[c] * 100
+    #     elif c.isprintable():
+    #         score += 0.5
+    #     else:
+    #         score -= 5
+    # return score
+
+    count = Counter(text)
+    total = 0
+    #english_count = dict.fromkeys(EN_FREQ.keys(), 0)
+    for char, freq in count.items():
+        if 65 <= char <= 90 or 97 <= char <= 122 or char == 32:  # printable ASCII range
+            #english_count[chr(char).lower()] += 1
+            total += 1
+    #if total == 0:
+        #return 0.0  # return a high score if no valid characters found
+    #english_count = {c: f / total for c, f in english_count.items()}
+    #return sum_multi_distribution(english_count, EN_FREQ)
+    return total
+
+def single_byte_xor_best_key(block: bytes) -> (int, float, bytes):
+    # try all 256 single-byte keys, return best key, its score, and decrypted block
+    best_k = None
+    best_score = -1e9
+    best_plain = b''
+    for k in range(256):
+        plain = bytes([b ^ k for b in block])
+        s = score_english(plain)
+        if s > best_score:
+        #if abs(s - .08239) < best_score:
+            best_score = s
+            best_k = k
+            best_plain = plain
+    return best_k, best_score, best_plain
 
 def break_vigenere_with_keysize(ciphertext: bytes, keysize: int) -> (bytes, float):
     key = bytearray()
     total_score = 0.0
+    #avg_score = 0.0
     for i in range(keysize):
         block = create_substring(ciphertext, keysize, i)
         k, score, _ = single_byte_xor_best_key(block)
         key.append(k)
         total_score += score
+        #avg_score += score
+    
+    if total_score < len(ciphertext) / 8:
+        total_score = 0.0
+    total_score /= keysize
     return bytes(key), total_score
+
+def decrypt_vigenere(ciphertext: bytes, key: bytes) -> bytes:
+    return bytes(c ^ key[i % len(key)] for i, c in enumerate(ciphertext))
 
 def decipher(ciphertext: bytes) -> (bytes, int):
     # Find the best key length
     key_size = find_key_size(ciphertext)
-    # results = []
-    # for k, _ in key_size:
-    #     key, score = break_vigenere_with_keysize(ciphertext, k)
-    #     plaintxt = decrypt_vigenere(ciphertext, key)
-    #     results.append((k, key, plaintxt, score))
-    # results.sort(key=lambda x: x[3], reverse=True)
-    return key_size
+    results = []
+    for k, _ in key_size.items():
+         key, score = break_vigenere_with_keysize(ciphertext, k)
+         plaintxt = decrypt_vigenere(ciphertext, key)
+         results.append((k, key, score))
+    results.sort(key=lambda x: x[2], reverse=True)
+    return results
 
 def read_hex_file(path: str) -> bytes:
     txt = open(path, "rb").read().strip()
@@ -101,10 +154,12 @@ def read_hex_file(path: str) -> bytes:
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "cipher.txt"
     ciphertext = read_hex_file(path)
+    #print("distribution for scoring:", sum_multi_distribution(EN_FREQ, EN_FREQ))
     #print("Ciphertext:", ciphertext)
     #print("\\ ciphertext[0::4]:", ciphertext[0::4])
     results = decipher(ciphertext)
     print("Results:", results)
+    
 
 if __name__ == "__main__":
     main()
