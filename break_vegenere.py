@@ -25,7 +25,10 @@ def find_distribution(data: bytes):
     #if total > 0:
         #english_count = {c: f / total for c, f in english_count.items()}
 
+
     english_count = {c: f / total for c, f in count.items()}
+    
+
 
     #print("Distribution:", english_count)
     return english_count
@@ -69,32 +72,14 @@ def find_key_size(ciphertext: bytes) -> dict:
     return top5
 
 def score_english(text: bytes) -> float:
-    # simple scoring: favor English letter frequency and printable chars
-    # score = 0.0
-    # for b in text:
-    #     if b >= 0x80:
-    #         score -= 5
-    #         continue
-    #     c = chr(b).lower()
-    #     if c in EN_FREQ:
-    #         score += EN_FREQ[c] * 100
-    #     elif c.isprintable():
-    #         score += 0.5
-    #     else:
-    #         score -= 5
-    # return score
 
     count = Counter(text)
     total = 0
-    #english_count = dict.fromkeys(EN_FREQ.keys(), 0)
     for char, freq in count.items():
         if 65 <= char <= 90 or 97 <= char <= 122 or char == 32:  # printable ASCII range
-            #english_count[chr(char).lower()] += 1
             total += 1
-    #if total == 0:
-        #return 0.0  # return a high score if no valid characters found
-    #english_count = {c: f / total for c, f in english_count.items()}
-    #return sum_multi_distribution(english_count, EN_FREQ)
+            if chr(char).lower() in EN_FREQ:
+                total += EN_FREQ[chr(char).lower()]*10
     return total
 
 def single_byte_xor_best_key(block: bytes) -> (int, float, bytes):
@@ -122,8 +107,8 @@ def break_vigenere_with_keysize(ciphertext: bytes, keysize: int) -> (bytes, floa
         key.append(k)
         total_score += score
         #avg_score += score
-    
-    if total_score < len(ciphertext) / 8:
+    percent_decoded = total_score / len(ciphertext)
+    if percent_decoded < .2:
         total_score = 0.0
     total_score /= keysize
     return bytes(key), total_score
